@@ -1,0 +1,12 @@
+.env
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+chroma_db/
+bot.log
+*.egg-info/
+dist/
+build/
+.pytest_cache/
