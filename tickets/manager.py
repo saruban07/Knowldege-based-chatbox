@@ -89,9 +89,4 @@ class TicketManager:
         )
         return ticket
 
-    def format_ticket_message(self, ticket: Ticket) -> str:
-        return (
-            f"**Ticket #{ticket.id}**\n"
-            f"**Question:** {ticket.question}\n"
-            f"**Timestamp:** {ticket.timestamp}"
-        )
+  
