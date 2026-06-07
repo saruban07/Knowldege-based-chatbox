@@ -6,3 +6,4 @@ tiktoken>=0.7.0
 langchain-core>=0.3.0
 langchain-groq>=0.2.0
 flask>=2.0.0
+pytest>=7.0
