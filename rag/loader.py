@@ -20,13 +20,14 @@ CHUNK_OVERLAP_TOKENS = 64
 @dataclass(frozen=True)
 class DocumentChunk:
     """A single indexed chunk from a KB article."""
-
     chunk_id: str
     source_filename: str
     section_heading: str
     title: str
     content: str
 
+
+# ── Token helpers ─────────────────────────────────────────────────────────────
 
 def _count_tokens(text: str, encoding_name: str = "cl100k_base") -> int:
     try:
@@ -60,6 +61,57 @@ def _split_by_tokens(
     return chunks
 
 
+# ── Alias extraction ──────────────────────────────────────────────────────────
+
+def _extract_aliases(body: str) -> tuple[list[str], str]:
+    """
+    Find an 'Also known as' bullet block inside a section body.
+    Returns (aliases, body_without_aliases).
+
+    The alias block looks like:
+        Also known as:
+        - Remove account
+        - Close account
+        ...
+
+    We strip it out of the body so it doesn't get split away by the token
+    chunker, then prepend it to EVERY sub-chunk so retrieval always finds it.
+    """
+    aliases: list[str] = []
+    clean_lines: list[str] = []
+    in_aka = False
+
+    for line in body.splitlines():
+        stripped = line.strip()
+        if re.match(r"also\s+known\s+as", stripped, re.IGNORECASE):
+            in_aka = True
+            continue                       # drop the "Also known as:" header line
+        if in_aka:
+            if stripped.startswith("-"):
+                aliases.append(stripped.lstrip("-").strip())
+                continue                   # consume alias bullet
+            else:
+                in_aka = False             # end of alias block; fall through
+
+        clean_lines.append(line)
+
+    return aliases, "\n".join(clean_lines).strip()
+
+
+def _build_chunk_content(heading: str, aliases: list[str], body: str) -> str:
+    """
+    Prepend heading + alias block to a body fragment so that every sub-chunk
+    is independently retrievable by any of its alias phrasings.
+    """
+    parts = [heading]
+    if aliases:
+        parts.append("Also known as: " + ", ".join(aliases))
+    parts.append(body)
+    return "\n".join(parts).strip()
+
+
+# ── Markdown section parser ───────────────────────────────────────────────────
+
 def _extract_title(content: str, filename: str) -> str:
     for line in content.splitlines():
         stripped = line.strip()
@@ -70,19 +122,18 @@ def _extract_title(content: str, filename: str) -> str:
 
 def _parse_sections(content: str) -> list[tuple[str, str]]:
     """
-    Split markdown into sections by headings (## and ###).
-    Returns list of (heading, body) tuples.
+    Split markdown into (heading, body) pairs on ## / ### boundaries.
+    Top-level # headings are skipped (they're the doc title, not content).
     """
     lines = content.splitlines()
     sections: list[tuple[str, str]] = []
     current_heading = "Introduction"
     current_lines: list[str] = []
-
     heading_pattern = re.compile(r"^(#{1,3})\s+(.+)$")
 
     for line in lines:
         match = heading_pattern.match(line.strip())
-        if match and len(match.group(1)) >= 2:
+        if match and len(match.group(1)) >= 2:   # ## or ###
             if current_lines:
                 body = "\n".join(current_lines).strip()
                 if body:
@@ -102,6 +153,8 @@ def _parse_sections(content: str) -> list[tuple[str, str]]:
 
     return sections
 
+
+# ── Public API ────────────────────────────────────────────────────────────────
 
 def load_kb_documents(kb_dir: Path | str = DEFAULT_KB_DIR) -> list[DocumentChunk]:
     """Load all Markdown files from the KB directory and chunk them."""
@@ -133,8 +186,26 @@ def load_kb_documents(kb_dir: Path | str = DEFAULT_KB_DIR) -> list[DocumentChunk
 
         chunk_index = 0
         for section_heading, section_body in sections:
-            sub_chunks = _split_by_tokens(section_body)
+
+            # ── KEY FIX: pull aliases out before token-splitting ──────────────
+            aliases, clean_body = _extract_aliases(section_body)
+            if aliases:
+                logger.debug(
+                    "%s > %r — found %d aliases: %s",
+                    md_file.name, section_heading, len(aliases), aliases,
+                )
+
+            sub_chunks = _split_by_tokens(clean_body)
+
+            # If body was empty after stripping aliases, still index the aliases
+            if not sub_chunks and aliases:
+                sub_chunks = [", ".join(aliases)]
+
             for sub in sub_chunks:
+                # Aliases are prepended to EVERY sub-chunk so retrieval hits
+                # them regardless of which fragment a query matches.
+                full_content = _build_chunk_content(section_heading, aliases, sub)
+
                 chunk_id = f"{md_file.stem}::{section_heading}::{chunk_index}"
                 all_chunks.append(
                     DocumentChunk(
@@ -142,7 +213,7 @@ def load_kb_documents(kb_dir: Path | str = DEFAULT_KB_DIR) -> list[DocumentChunk
                         source_filename=md_file.name,
                         section_heading=section_heading,
                         title=title,
-                        content=sub,
+                        content=full_content,
                     )
                 )
                 chunk_index += 1

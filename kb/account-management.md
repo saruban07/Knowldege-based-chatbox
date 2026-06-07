@@ -24,6 +24,14 @@ Email changes require verification of the new address.
 
 Account deletion is permanent and cannot be undone.
 
+Also known as:
+- Remove account
+- Close account
+- Permanently delete account
+- Delete my profile
+- Cancel my account permanently
+
+
 1. Go to **Settings** > **Account** > **Danger Zone**.
 2. Click **Delete Account**.
 3. Type your password to confirm.

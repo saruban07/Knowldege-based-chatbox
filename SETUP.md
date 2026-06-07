@@ -7,9 +7,11 @@ Complete setup and testing instructions for developers.
 ## What This Bot Does
 
 - Answers support questions in Discord using **RAG** (retrieval over Markdown KB articles)
+- Uses **semantic + keyword search** with query expansion for accurate retrieval
 - Uses **Groq** for LLM answers (free tier)
 - Uses **local ONNX embeddings** via ChromaDB (no extra API key)
 - Escalates to a support ticket when confidence is below threshold
+- Tracks answer and ticket analytics via `!analytics`
 
 ---
 
@@ -110,6 +112,7 @@ CONFIDENCE_THRESHOLD=0.75
 | `EMBEDDING_MODEL` | No | `all-MiniLM-L6-v2` | Local ONNX embedding model |
 | `CONFIDENCE_THRESHOLD` | No | `0.75` | Below this → offer ticket escalation |
 
+
 **Never commit `.env`** — it is already in `.gitignore`.
 
 ---
@@ -195,6 +198,41 @@ These scripts create the venv, install dependencies, copy `.env.example` → `.e
 
 ---
 
+## How semantic + keyword search works
+
+The bot uses a two-layer retrieval strategy to find the right KB content even when the user's phrasing doesn't exactly match the documentation.
+
+**Layer 1 — semantic search (dense embeddings)**
+Every KB chunk is embedded using `all-MiniLM-L6-v2` and stored in ChromaDB. When a question arrives, its embedding is compared against all chunks using cosine similarity. Chunks scoring above `0.20` similarity are kept.
+
+**Layer 2 — query expansion (keyword aliases)**
+Common support phrasings are automatically expanded into multiple search variants before retrieval. For example:
+
+| User types | Variants searched |
+|---|---|
+| `how to delete my account` | + `remove account`, `close account`, `cancel account`, `permanently delete` |
+| `reset password` | + `forgot password`, `change password` |
+| `two factor` | + `2fa`, `two-factor authentication` |
+
+Results from all variants are merged, keeping the best similarity score per chunk. This means queries like "remove my account" or "cancel my account permanently" correctly retrieve the **Deleting Your Account** section even though the heading uses different wording.
+
+**Why this matters for KB authors**
+Each KB section can include an `Also known as:` bullet list of alternate phrasings. The loader attaches these aliases to every chunk from that section so they are always present during retrieval:
+
+```markdown
+## Deleting Your Account
+Also known as:
+- Remove account
+- Close account
+- Cancel my account permanently
+
+1. Go to **Settings** > **Account** > **Danger Zone**...
+```
+
+This eliminates most retrieval misses without requiring any code changes — just update the KB file and run `!reindex`.
+
+---
+
 ## Testing checklist
 
 Use a dedicated `#bot-testing` channel in your Discord server.
@@ -229,7 +267,21 @@ Send these plain messages one at a time:
 | 4 | `How do I delete my account?` | Danger Zone steps |
 | 5 | `How do I view my invoice?` | Billing → Invoice History steps |
 
-### 4. Low-confidence escalation
+### 4. Semantic + keyword retrieval
+
+Test that alternate phrasings retrieve the correct answer (these should not escalate):
+
+| # | Message | Should answer from |
+|---|---------|-------------------|
+| 1 | `remove my account` | `account-management.md > Deleting Your Account` |
+| 2 | `cancel my account permanently` | `account-management.md > Deleting Your Account` |
+| 3 | `forgot password` | `password-reset.md` |
+| 4 | `enable 2fa` | `account-management.md > Security Settings` |
+| 5 | `change my display name` | `account-management.md > Updating Your Profile` |
+
+If any of these escalate to a ticket, run `!reindex` and check that the relevant KB section contains an `Also known as:` block with the matching phrase.
+
+### 5. Low-confidence escalation
 
 Send something outside the KB:
 
@@ -241,7 +293,7 @@ What is the capital of France?
 - [ ] Bot asks if you want a support ticket
 - [ ] Reply `yes` → ticket is created
 
-### 5. Manual ticket
+### 6. Manual ticket
 
 ```
 !ticket I need help with something not in the KB
@@ -249,7 +301,18 @@ What is the capital of France?
 
 - [ ] Ticket created with ID and question text
 
-### 6. Reindex after KB changes
+### 7. Analytics command
+
+```
+!analytics
+```
+
+- [ ] Shows total questions answered and escalated
+- [ ] Shows average confidence score
+- [ ] Shows top repeated questions
+- [ ] Ticket resolution rate updates after tickets are created
+
+### 8. Reindex after KB changes
 
 1. Edit any file in `kb/` (or add a new `.md` file)
 2. Send `!reindex`
@@ -286,16 +349,53 @@ The bot only knows what is in `kb/*.md`:
 - What are the API rate limits?
 - How do I disconnect an integration?
 
+### Security (`kb/security.md`)
+
+* What are the password requirements?
+* How is customer data encrypted?
+* Is my data encrypted at rest?
+* What encryption methods are used?
+* How long before an inactive session expires?
+* What is the session timeout period?
+* What security measures are in place?
+* How do you protect customer data?
+
+### Reports (`kb/reports.md`)
+
+* How do I generate a report?
+* Where can I create reports?
+* What report export formats are supported?
+* Can I export reports as PDF?
+* Can I download reports in Excel format?
+* Can I export reports as CSV?
+* How do scheduled reports work?
+* Which plans support scheduled reports?
+* Can reports be generated automatically?
+
+### Notifications (`kb/notifications.md`)
+
+* How do I manage email notifications?
+* Where can I configure notification settings?
+* What notification types are available?
+* How do I enable push notifications?
+* How do I disable push notifications?
+* How do I unsubscribe from emails?
+* Can I receive billing alerts?
+* Can I receive security alerts?
+* How do I get product update notifications?
+
+
 ---
 
 ## Commands reference
 
-| Command | Description |
-|---------|-------------|
-| `!help` | Show available commands |
-| `!stats` | KB files, chunks, tickets, models |
-| `!reindex` | Rebuild vector DB from `kb/` |
-| `!ticket <question>` | Manually create a support ticket |
+| Command | Who | Description |
+|---------|-----|-------------|
+| `!help` | Everyone | Show available commands |
+| `!stats` | Everyone | KB files, chunks, tickets, models |
+| `!analytics` | Everyone | Questions answered, escalated, avg confidence, top questions, ticket resolution rate |
+| `!reindex` | Everyone | Rebuild vector DB from `kb/` |
+| `!ticket <question>` | Everyone | Manually create a support ticket |
 
 Plain messages (no `!`) are treated as support questions.
 
@@ -305,24 +405,28 @@ Plain messages (no `!`) are treated as support questions.
 
 ```
 bot/
-├── bot.py                 # Discord bot entry point
-├── check_setup.py         # Pre-flight checks
-├── setup.ps1              # Windows setup script
-├── setup.sh               # macOS/Linux setup script
-├── SETUP.md               # This file
+├── bot.py                   # Discord bot entry point
+├── check_setup.py           # Pre-flight checks
+├── setup.ps1                # Windows setup script
+├── setup.sh                 # macOS/Linux setup script
+├── SETUP.md                 # This file
 ├── requirements.txt
-├── .env.example           # Template (copy to .env)
-├── .env                   # Your secrets (not committed)
+├── .env.example             # Template (copy to .env)
+├── .env                     # Your secrets (not committed)
 ├── rag/
-│   ├── loader.py          # Load & chunk KB markdown
-│   ├── embeddings.py      # Local ONNX embeddings + ChromaDB
-│   ├── retriever.py       # Semantic search
-│   ├── prompts.py         # LLM prompts
-│   └── llm.py             # Groq RAG pipeline
-├── kb/                    # Knowledge base articles (.md)
+│   ├── loader.py            # Load & chunk KB markdown, alias extraction
+│   ├── embeddings.py        # Local ONNX embeddings + ChromaDB
+│   ├── retriever.py         # Semantic search + query expansion
+│   ├── prompts.py           # LLM prompts
+│   └── llm.py               # Groq RAG pipeline
+├── analytics/
+│   └── manager.py           # Question + escalation tracking
+|   └── analytics.json
+├── kb/                      # Knowledge base articles (.md)
 ├── tickets/
-│   └── tickets.json       # Created support tickets
-└── chroma_db/             # Vector index (auto-generated)
+│   └── tickets.json         # Created support tickets
+|   └── manager.py`
+└── chroma_db/               # Vector index (auto-generated)
 ```
 
 ---
@@ -339,7 +443,10 @@ bot/
 | Groq 429 / rate limit | Wait and retry; free tier has limits |
 | Slow first startup | Normal — embedding model downloads once (~80 MB) |
 | Wrong or stale answers | Run `!reindex` after editing `kb/` files |
+| Query like "remove account" escalates | Add it to the `Also known as:` block in the relevant KB section, then `!reindex` |
+| `!analytics` shows 0 questions | Questions are tracked in memory; stats reset on bot restart |
 | `KeyboardInterrupt` on stop | Normal when pressing `Ctrl+C` |
+
 
 ### Windows notes
 
@@ -363,8 +470,18 @@ bot/
 
 1. Add or edit a `.md` file in `kb/`
 2. Use clear headings (`## Section Name`) — they become citation sources
-3. Restart bot or run `!reindex` in Discord
-4. Test with a question about the new content
+3. Add an `Also known as:` block under headings where users may phrase things differently:
+
+```markdown
+## Deleting Your Account
+Also known as:
+- Remove account
+- Close account
+- Cancel my account permanently
+```
+
+4. Restart bot or run `!reindex` in Discord
+5. Test with a question using an alternate phrasing from the alias list
 
 ---
 

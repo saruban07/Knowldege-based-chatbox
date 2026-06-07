@@ -1,12 +1,11 @@
 """Support ticket persistence and creation."""
-
 from __future__ import annotations
-
 import json
 import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +57,48 @@ class TicketManager:
     def ticket_count(self) -> int:
         return len(self._data.get("tickets", []))
 
+    # ── NEW: used by !analytics and !tickets ─────────────────────────────────
+
+    @property
+    def all_tickets(self) -> list[Ticket]:
+        return [Ticket(**t) for t in self._data.get("tickets", [])]
+
+    def get_analytics(self) -> dict[str, Any]:
+        """Return summary stats for !analytics command."""
+        tickets = self.all_tickets
+        total = len(tickets)
+        if total == 0:
+            return {"total": 0, "this_week": 0, "top_topics": []}
+
+        # Tickets created in the last 7 days
+        now = datetime.now(timezone.utc)
+        fmt = "%Y-%m-%d %H:%M:%S UTC"
+        this_week = 0
+        for t in tickets:
+            try:
+                created = datetime.strptime(t.timestamp, fmt).replace(tzinfo=timezone.utc)
+                if (now - created).days <= 7:
+                    this_week += 1
+            except ValueError:
+                pass
+
+        # Top 3 most common first words as a rough topic hint
+        from collections import Counter
+        words = []
+        for t in tickets:
+            first = t.question.strip().split()
+            if first:
+                words.append(first[0].lower().strip("?!.,"))
+        top_topics = [w for w, _ in Counter(words).most_common(3)]
+
+        return {
+            "total":      total,
+            "this_week":  this_week,
+            "top_topics": top_topics,
+        }
+
+    # ── Existing methods unchanged ────────────────────────────────────────────
+
     def create_ticket(
         self,
         question: str,
@@ -67,7 +108,6 @@ class TicketManager:
     ) -> Ticket:
         ticket_id = int(self._data.get("next_id", 1001))
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-
         ticket = Ticket(
             id=ticket_id,
             question=question,
@@ -76,16 +116,12 @@ class TicketManager:
             channel_id=str(channel_id),
             timestamp=timestamp,
         )
-
         self._data.setdefault("tickets", []).append(asdict(ticket))
         self._data["next_id"] = ticket_id + 1
         self._save()
-
         logger.info(
             "Created ticket #%d for user=%s question=%r",
-            ticket_id,
-            username,
-            question[:80],
+            ticket_id, username, question[:80],
         )
         return ticket
 
@@ -95,3 +131,6 @@ class TicketManager:
             f"**Question:** {ticket.question}\n"
             f"**Timestamp:** {ticket.timestamp}"
         )
+
+
+

@@ -1,5 +1,4 @@
 """Prompt templates for RAG answer generation and confidence estimation."""
-
 from __future__ import annotations
 
 SYSTEM_PROMPT = """You are a support assistant for a self-service knowledge base.
@@ -18,9 +17,13 @@ Rules:
    - 0.5–0.69: Partial answer; significant gaps
    - Below 0.5: Cannot answer confidently from context
 
-Respond with valid JSON only (no markdown fences):
+Output format:
+- Respond with a valid JSON object ONLY — no markdown fences, no prose before or after.
+- Use \\n (backslash + n) for line breaks inside string values.
+- NEVER use a literal newline character inside a JSON string value.
+
 {
-  "answer": "your answer text",
+  "answer": "your answer text. Use \\n for line breaks between steps.",
   "citations": [
     {"source": "filename.md", "section": "Section Heading"}
   ],

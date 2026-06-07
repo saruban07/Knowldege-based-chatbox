@@ -1,0 +1,14 @@
+{
+  "total_questions": 7,
+  "answered_questions": 3,
+  "escalated_questions": 4,
+  "avg_confidence": 0.6885714285714286,
+  "top_questions": {
+    "how to delete my account": 2,
+    "yes": 1,
+    "explain llm": 1,
+    "@admin": 1,
+    "hey": 1,
+    "how to add new user": 1
+  }
+}

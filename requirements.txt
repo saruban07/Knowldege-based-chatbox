@@ -5,3 +5,4 @@ markdown>=3.5.0
 tiktoken>=0.7.0
 langchain-core>=0.3.0
 langchain-groq>=0.2.0
+flask>=2.0.0
