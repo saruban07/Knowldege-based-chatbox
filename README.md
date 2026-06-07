@@ -237,6 +237,68 @@ bot/
 
 ---
 
+## Test Results
+
+Run the test suite:
+
+```bash
+pytest tests/ -v
+```
+
+Output:
+
+```
+platform win32 -- Python 3.12.8, pytest-9.0.3, pluggy-1.6.0
+rootdir: C:\Users\LENOVO\Desktop\project\Knowldege-based-chatbox
+plugins: anyio-4.4.0, langsmith-0.8.9
+collected 29 items
+
+tests/test_happy_path.py::TestLoader::test_document_chunk_fields PASSED              [  3%]
+tests/test_happy_path.py::TestLoader::test_parse_sections_splits_on_headings PASSED  [  6%]
+tests/test_happy_path.py::TestLoader::test_extract_aliases_returns_list PASSED       [ 10%]
+tests/test_happy_path.py::TestLoader::test_aliases_prepended_to_chunk_content PASSED [ 13%]
+tests/test_happy_path.py::TestLoader::test_load_kb_documents_returns_chunks PASSED   [ 17%]
+tests/test_happy_path.py::TestLoader::test_empty_kb_directory_returns_empty_list PASSED [ 20%]
+tests/test_happy_path.py::TestQueryExpansion::test_original_query_always_included PASSED [ 24%]
+tests/test_happy_path.py::TestQueryExpansion::test_delete_trigger_expands PASSED     [ 27%]
+tests/test_happy_path.py::TestQueryExpansion::test_no_trigger_returns_single_variant PASSED [ 31%]
+tests/test_happy_path.py::TestQueryExpansion::test_retriever_filters_below_threshold PASSED [ 34%]
+tests/test_happy_path.py::TestQueryExpansion::test_retriever_accepts_above_threshold PASSED [ 37%]
+tests/test_happy_path.py::TestQueryExpansion::test_retrieval_result_avg_similarity PASSED [ 41%]
+tests/test_happy_path.py::TestJsonParsing::test_parses_clean_json PASSED             [ 44%]
+tests/test_happy_path.py::TestJsonParsing::test_strips_markdown_fences PASSED        [ 48%]
+tests/test_happy_path.py::TestJsonParsing::test_handles_literal_newline_in_string PASSED [ 51%]
+tests/test_happy_path.py::TestJsonParsing::test_fallback_on_plain_text PASSED        [ 55%]
+tests/test_happy_path.py::TestJsonParsing::test_extracts_json_from_mixed_text PASSED [ 58%]
+tests/test_happy_path.py::TestConfidenceScoring::test_high_confidence_all_signals PASSED [ 62%]
+tests/test_happy_path.py::TestConfidenceScoring::test_low_confidence_poor_retrieval PASSED [ 65%]
+tests/test_happy_path.py::TestConfidenceScoring::test_score_clamped_between_0_and_1 PASSED [ 68%]
+tests/test_happy_path.py::TestTicketManager::test_create_ticket_returns_ticket PASSED [ 72%]
+tests/test_happy_path.py::TestTicketManager::test_ticket_id_increments PASSED        [ 75%]
+tests/test_happy_path.py::TestTicketManager::test_ticket_persisted_to_json PASSED    [ 79%]
+tests/test_happy_path.py::TestTicketManager::test_ticket_count_property PASSED       [ 82%]
+tests/test_happy_path.py::TestTicketManager::test_ticket_has_timestamp PASSED        [ 86%]
+tests/test_happy_path.py::TestTicketManager::test_ticket_stores_user_id PASSED       [ 89%]
+tests/test_happy_path.py::TestTicketManager::test_multiple_tickets_persisted PASSED  [ 93%]
+tests/test_happy_path.py::TestTicketManager::test_next_id_increments_in_json PASSED  [ 96%]
+tests/test_happy_path.py::TestTicketManager::test_format_ticket_message PASSED       [100%]
+
+29 passed in 3.11s
+```
+
+### Test Coverage
+
+| Module | Tests | What is verified |
+|--------|-------|-----------------|
+| `rag/loader.py` | 6 | Chunking, alias extraction, alias prepended to chunks, empty KB |
+| `rag/retriever.py` | 6 | Query expansion, similarity filtering, avg similarity calculation |
+| `rag/llm.py` | 8 | JSON parsing, fence stripping, newline crash fix, confidence scoring |
+| `tickets/manager.py` | 9 | Create ticket, ID increment, JSON persistence, timestamp, analytics |
+
+All 29 tests run fully offline — no Discord token, Groq API key, or ChromaDB required.
+
+---
+
 ## Assumptions and Limitations
 
 ### Assumptions
