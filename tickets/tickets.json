@@ -1,5 +1,5 @@
 {
-  "next_id": 1002,
+  "next_id": 1007,
   "tickets": [
     {
       "id": 1001,
@@ -8,6 +8,49 @@
       "username": "karthikeyan",
       "channel_id": "1446384607195959429",
       "timestamp": "2026-06-05 18:01:44 UTC"
+    },
+    {
+      "id": 1002,
+      "question": "hey",
+      "user_id": "1512627816980549644",
+      "username": "sara",
+      "channel_id": "1512643474024042558",
+      "timestamp": "2026-06-06 02:28:40 UTC"
+    },
+    {
+      "id": 1003,
+      "question": "hello",
+      "user_id": "1512627816980549644",
+      "username": "sara",
+      "channel_id": "1512643474024042558",
+      "timestamp": "2026-06-06 07:46:33 UTC"
+    },
+    {
+      "id": 1004,
+      "question": "yes",
+      "user_id": "1512627816980549644",
+      "username": "sara",
+      "channel_id": "1512643474024042558",
+      "timestamp": "2026-06-06 13:54:52 UTC"
+    },
+    {
+      "id": 1005,
+      "question": "explain LLM",
+      "user_id": "1512627816980549644",
+      "username": "sara",
+      "channel_id": "1512643474024042558",
+      "timestamp": "2026-06-06 15:39:33 UTC",
+      "status": "open",
+      "resolved_at": null,
+      "resolved_by": null
+    },
+    {
+      "id": 1006,
+      "question": "how to add new user",
+      "user_id": "1512627816980549644",
+      "username": "sara",
+      "channel_id": "1512643474024042558",
+      "timestamp": "2026-06-06 15:44:07 UTC"
     }
   ]
 }

@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 
 from rag.llm import RAGService, check_groq_available
 from tickets.manager import TicketManager
+from analytics.manager import AnalyticsManager
 
 load_dotenv()
 
@@ -73,6 +74,7 @@ bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents, help_command=
 
 rag_service: RAGService
 ticket_manager: TicketManager
+analytics_manager: AnalyticsManager
 
 # Pending escalation: user_id -> original question
 _pending_escalations: dict[int, str] = {}
@@ -142,6 +144,13 @@ async def _handle_support_question(message: discord.Message, question: str) -> N
         rag_response.retrieval_similarity,
         rag_response.supporting_chunks,
         user.id,
+    )
+    analytics_manager.log_question(
+        question,
+        rag_response.confidence,
+        escalated=rag_service.should_escalate(
+            rag_response.confidence
+        ),
     )
 
     if rag_service.should_escalate(rag_response.confidence):
@@ -246,6 +255,60 @@ async def cmd_stats(ctx: commands.Context) -> None:
     )
     await ctx.send(embed=embed)
 
+@bot.command(name="analytics")
+async def cmd_analytics(ctx):
+    stats = analytics_manager.get_stats()
+
+    embed = discord.Embed(
+        title="Chatbot Analytics",
+        color=discord.Color.gold()
+    )
+
+    embed.add_field(
+        name="Total Questions",
+        value=str(stats["total_questions"]),
+        inline=True
+    )
+
+    embed.add_field(
+        name="Answered",
+        value=str(stats["answered_questions"]),
+        inline=True
+    )
+
+    embed.add_field(
+        name="Escalated",
+        value=str(stats["escalated_questions"]),
+        inline=True
+    )
+
+    embed.add_field(
+        name="Average Confidence",
+        value=f"{stats['avg_confidence']:.0%}",
+        inline=True
+    )
+
+    top_questions = sorted(
+        stats["top_questions"].items(),
+        key=lambda x: x[1],
+        reverse=True
+    )[:5]
+
+    if top_questions:
+        text = "\n".join(
+            f"{q[:40]} ({count})"
+            for q, count in top_questions
+        )
+    else:
+        text = "No data"
+
+    embed.add_field(
+        name="Top Questions",
+        value=text,
+        inline=False
+    )
+
+    await ctx.send(embed=embed)
 
 @bot.command(name="ticket")
 async def cmd_ticket(ctx: commands.Context, *, question: str | None = None) -> None:
@@ -267,7 +330,7 @@ async def cmd_ticket(ctx: commands.Context, *, question: str | None = None) -> N
 
 
 def main() -> None:
-    global rag_service, ticket_manager
+    global rag_service, ticket_manager, analytics_manager
 
     print("[1/4] Checking configuration...", flush=True)
     Path("kb").mkdir(exist_ok=True)
@@ -284,6 +347,7 @@ def main() -> None:
 
     print("[2/4] Initializing RAG service...", flush=True)
     ticket_manager = TicketManager()
+    analytics_manager = AnalyticsManager()
     rag_service = RAGService(
         model_name=GROQ_MODEL,
         groq_api_key=GROQ_API_KEY,
@@ -342,3 +406,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
