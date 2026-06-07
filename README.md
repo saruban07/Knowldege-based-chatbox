@@ -299,6 +299,313 @@ All 29 tests run fully offline — no Discord token, Groq API key, or ChromaDB r
 
 ---
 
+
+## How semantic + keyword search works
+
+The bot uses a two-layer retrieval strategy to find the right KB content even when the user's phrasing doesn't exactly match the documentation.
+
+**Layer 1 — semantic search (dense embeddings)**
+Every KB chunk is embedded using `all-MiniLM-L6-v2` and stored in ChromaDB. When a question arrives, its embedding is compared against all chunks using cosine similarity. Chunks scoring above `0.20` similarity are kept.
+
+**Layer 2 — query expansion (keyword aliases)**
+Common support phrasings are automatically expanded into multiple search variants before retrieval. For example:
+
+| User types | Variants searched |
+|---|---|
+| `how to delete my account` | + `remove account`, `close account`, `cancel account`, `permanently delete` |
+| `reset password` | + `forgot password`, `change password` |
+| `two factor` | + `2fa`, `two-factor authentication` |
+
+Results from all variants are merged, keeping the best similarity score per chunk. This means queries like "remove my account" or "cancel my account permanently" correctly retrieve the **Deleting Your Account** section even though the heading uses different wording.
+
+**Why this matters for KB authors**
+Each KB section can include an `Also known as:` bullet list of alternate phrasings. The loader attaches these aliases to every chunk from that section so they are always present during retrieval:
+
+```markdown
+## Deleting Your Account
+Also known as:
+- Remove account
+- Close account
+- Cancel my account permanently
+
+1. Go to **Settings** > **Account** > **Danger Zone**...
+```
+
+This eliminates most retrieval misses without requiring any code changes — just update the KB file and run `!reindex`.
+
+---
+
+## Testing checklist
+
+Use a dedicated `#bot-testing` channel in your Discord server.
+
+### 1. Bot is online
+
+- [ ] Bot shows as online in the member list
+- [ ] `!help` returns the command embed
+
+### 2. Stats command
+
+Send:
+
+```
+!stats
+```
+
+- [ ] Shows **4** KB files
+- [ ] Shows indexed chunks (≈19)
+- [ ] Shows LLM: `llama-3.3-70b-versatile`
+- [ ] Shows Embeddings: `all-MiniLM-L6-v2`
+
+### 3. Knowledge base Q&A (no command prefix)
+
+Send these plain messages one at a time:
+
+| # | Message | Expected |
+|---|---------|----------|
+| 1 | `How do I reset my password?` | Step-by-step answer + sources + confidence |
+| 2 | `What subscription plans do you offer?` | Free / Pro / Enterprise pricing |
+| 3 | `How do I connect Slack?` | Integration steps from `integrations.md` |
+| 4 | `How do I delete my account?` | Danger Zone steps |
+| 5 | `How do I view my invoice?` | Billing → Invoice History steps |
+
+### 4. Semantic + keyword retrieval
+
+Test that alternate phrasings retrieve the correct answer (these should not escalate):
+
+| # | Message | Should answer from |
+|---|---------|-------------------|
+| 1 | `remove my account` | `account-management.md > Deleting Your Account` |
+| 2 | `cancel my account permanently` | `account-management.md > Deleting Your Account` |
+| 3 | `forgot password` | `password-reset.md` |
+| 4 | `enable 2fa` | `account-management.md > Security Settings` |
+| 5 | `change my display name` | `account-management.md > Updating Your Profile` |
+
+If any of these escalate to a ticket, run `!reindex` and check that the relevant KB section contains an `Also known as:` block with the matching phrase.
+
+### 5. Low-confidence escalation
+
+Send something outside the KB:
+
+```
+What is the capital of France?
+```
+
+- [ ] Bot says it cannot answer confidently
+- [ ] Bot asks if you want a support ticket
+- [ ] Reply `yes` → ticket is created
+
+### 6. Manual ticket
+
+```
+!ticket I need help with something not in the KB
+```
+
+- [ ] Ticket created with ID and question text
+
+### 7. Analytics command
+
+```
+!analytics
+```
+
+- [ ] Shows total questions answered and escalated
+- [ ] Shows average confidence score
+- [ ] Shows top repeated questions
+- [ ] Ticket resolution rate updates after tickets are created
+
+### 8. Reindex after KB changes
+
+1. Edit any file in `kb/` (or add a new `.md` file)
+2. Send `!reindex`
+3. Send `!stats` — chunk count should update
+4. Ask a question about the new/edited content
+
+---
+
+## Sample questions by topic
+
+The bot only knows what is in `kb/*.md`:
+
+### Password reset (`kb/password-reset.md`)
+- How do I reset my password?
+- I forgot my password — what do I do?
+- What are the password requirements?
+- The reset email never arrived — what should I check?
+
+### Billing (`kb/billing.md`)
+- How do I download an invoice?
+- How do I update my payment method?
+- What plans are available?
+- How do I cancel my subscription?
+
+### Account management (`kb/account-management.md`)
+- How do I enable 2FA?
+- How do I update my profile?
+- How do I delete my account?
+- How do I transfer ownership?
+
+### Integrations (`kb/integrations.md`)
+- How do I set up Slack?
+- How do I create a webhook?
+- What are the API rate limits?
+- How do I disconnect an integration?
+
+### Security (`kb/security.md`)
+
+* What are the password requirements?
+* How is customer data encrypted?
+* Is my data encrypted at rest?
+* What encryption methods are used?
+* How long before an inactive session expires?
+* What is the session timeout period?
+* What security measures are in place?
+* How do you protect customer data?
+
+### Reports (`kb/reports.md`)
+
+* How do I generate a report?
+* Where can I create reports?
+* What report export formats are supported?
+* Can I export reports as PDF?
+* Can I download reports in Excel format?
+* Can I export reports as CSV?
+* How do scheduled reports work?
+* Which plans support scheduled reports?
+* Can reports be generated automatically?
+
+### Notifications (`kb/notifications.md`)
+
+* How do I manage email notifications?
+* Where can I configure notification settings?
+* What notification types are available?
+* How do I enable push notifications?
+* How do I disable push notifications?
+* How do I unsubscribe from emails?
+* Can I receive billing alerts?
+* Can I receive security alerts?
+* How do I get product update notifications?
+
+
+---
+
+## Commands reference
+
+| Command | Who | Description |
+|---------|-----|-------------|
+| `!help` | Everyone | Show available commands |
+| `!stats` | Everyone | KB files, chunks, tickets, models |
+| `!analytics` | Everyone | Questions answered, escalated, avg confidence, top questions, ticket resolution rate |
+| `!reindex` | Everyone | Rebuild vector DB from `kb/` |
+| `!ticket <question>` | Everyone | Manually create a support ticket |
+
+Plain messages (no `!`) are treated as support questions.
+
+---
+
+## Project structure
+
+```
+bot/
+├── bot.py                   # Discord bot entry point
+├── check_setup.py           # Pre-flight checks
+├── setup.ps1                # Windows setup script
+├── setup.sh                 # macOS/Linux setup script
+├── SETUP.md                 # This file
+├── requirements.txt
+├── .env.example             # Template (copy to .env)
+├── .env                     # Your secrets (not committed)
+├── rag/
+│   ├── loader.py            # Load & chunk KB markdown, alias extraction
+│   ├── embeddings.py        # Local ONNX embeddings + ChromaDB
+│   ├── retriever.py         # Semantic search + query expansion
+│   ├── prompts.py           # LLM prompts
+│   └── llm.py               # Groq RAG pipeline
+├── analytics/
+│   └── manager.py           # Question + escalation tracking
+|   └── analytics.json
+├── kb/                      # Knowledge base articles (.md)
+├── tickets/
+│   └── tickets.json         # Created support tickets
+|   └── manager.py`
+└── chroma_db/               # Vector index (auto-generated)
+```
+
+---
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `GROQ_API_KEY is not set` | Copy `.env.example` to `.env` and add your Groq key |
+| `DISCORD_TOKEN is not set` | Add Discord bot token to `.env` |
+| `NameError: check_gemini_available` | Pull latest code — project uses Groq now |
+| Bot online but no replies | Enable **Message Content Intent** in Discord Developer Portal |
+| `Invalid DISCORD_TOKEN` | Reset token in Developer Portal, update `.env` |
+| Groq 429 / rate limit | Wait and retry; free tier has limits |
+| Slow first startup | Normal — embedding model downloads once (~80 MB) |
+| Wrong or stale answers | Run `!reindex` after editing `kb/` files |
+| Query like "remove account" escalates | Add it to the `Also known as:` block in the relevant KB section, then `!reindex` |
+| `!analytics` shows 0 questions | Questions are tracked in memory; stats reset on bot restart |
+| `KeyboardInterrupt` on stop | Normal when pressing `Ctrl+C` |
+
+
+### Windows notes
+
+- Use `cls` to clear terminal (not `clear`)
+- Use `copy` instead of `cp`
+- Activate venv: `venv\Scripts\activate`
+
+---
+
+## Team workflow
+
+1. Each developer uses their **own** Discord bot + Groq keys in a local `.env`
+2. Do **not** share tokens in Slack, email, or commits
+3. After pulling KB changes from git, run `!reindex`
+4. Check `bot.log` in the project root for errors
+5. Tickets are stored in `tickets/tickets.json` (local, not committed by default)
+
+---
+
+## Adding new KB content
+
+1. Add or edit a `.md` file in `kb/`
+2. Use clear headings (`## Section Name`) — they become citation sources
+3. Add an `Also known as:` block under headings where users may phrase things differently:
+
+```markdown
+## Deleting Your Account
+Also known as:
+- Remove account
+- Close account
+- Cancel my account permanently
+```
+
+4. Restart bot or run `!reindex` in Discord
+5. Test with a question using an alternate phrasing from the alias list
+
+---
+
+## Security reminders
+
+- `.env` is gitignored — keep it that way
+- Rotate Discord token and Groq key if exposed
+- Use a test Discord server, not production, during development
+
+---
+
+## Support
+
+If setup fails after following this guide:
+
+1. Run `python check_setup.py` and fix reported errors
+2. Check `bot.log` for stack traces
+3. Confirm Message Content Intent is enabled
+4. Confirm the bot has channel permissions in your test server
+
+---
+
 ## Assumptions and Limitations
 
 ### Assumptions
