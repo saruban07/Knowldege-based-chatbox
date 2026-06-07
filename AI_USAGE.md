@@ -1,7 +1,7 @@
 # AI Usage Note
 
 **Project:** Discord Knowledge Base Support Bot  
-**Team:** [Your Team Name]  
+**Team:** Team - 24 
 
 ---
 
